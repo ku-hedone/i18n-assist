@@ -1,0 +1,6 @@
+node_modules/
+build/
+typings/
+bin/
+.vscode
+tests/i18n.config.json
