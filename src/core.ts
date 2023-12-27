@@ -1,4 +1,7 @@
 import ts from 'typescript';
+import { excludedTypes } from './constant';
+import Collector from './collect';
+import { readFileSync } from 'fs';
 import type {
     Node,
     CallExpression,
@@ -8,9 +11,6 @@ import type {
     JsxText,
     JsxSelfClosingElement,
 } from 'typescript';
-import { excludedTypes } from './constant';
-import Collector from './collect';
-import { readFileSync } from 'fs';
 
 const {
     createSourceFile,

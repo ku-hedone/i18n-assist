@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import logger from './logs';
 import type { ClientOptions } from 'openai';
 import type { ChatCompletion } from 'openai/resources/chat/completions';
 
@@ -16,10 +17,10 @@ class Translator {
 
   private genMessages = (text: string): TranslateText => {
     return {
-        role: 'user',
-        content: text,
-      }
-  }
+      role: 'user',
+      content: text,
+    };
+  };
 
   private estimateTokenSize = (texts: string[]) => {
     let totalTokens = 0;
@@ -47,33 +48,42 @@ class Translator {
         totalTokens += tokenSize;
         messages[messages.length - 1].push(message);
       } else {
-        console.log(
-          `token size of index ${messages.length - 1} from messages`,
-          totalTokens,
+        logger.log(
+          `token size of index ${messages.length - 1} from messages: ${totalTokens}`,
         );
         messages.push([message]);
         totalTokens = tokenSize;
       }
     }
-    console.log(`token size of index ${messages.length - 1} from messages`, totalTokens);
+    logger.log(
+      `token size of index ${messages.length - 1} from messages: ${totalTokens}`,
+    );
     return messages;
   };
 
-  private retries = async (messages: TranslateText[], system: string, context: Record<string, string>) => {
-      const book = new Set<string>();
-      messages.forEach((i) => book.add(i.content));
-      const currentKeys = Object.keys(context);
-      currentKeys.forEach((text) => {
-        if (book.has(text)) {
-          book.delete(text);
-        }
-      });
-      const looseMessages = [...book.keys()].map((text) => this.genMessages(text));
-      const looseContext = await this.execTranslate(looseMessages, system, 'retries');
-      Object.assign(context, looseContext);
-  }
+  private retries = async (
+    messages: TranslateText[],
+    system: string,
+    context: Record<string, string>,
+  ) => {
+    const book = new Set<string>();
+    messages.forEach((i) => book.add(i.content));
+    const currentKeys = Object.keys(context);
+    currentKeys.forEach((text) => {
+      if (book.has(text)) {
+        book.delete(text);
+      }
+    });
+    const looseMessages = [...book.keys()].map((text) => this.genMessages(text));
+    const looseContext = await this.execTranslate(looseMessages, system, 'retries');
+    Object.assign(context, looseContext);
+  };
 
-  private execTranslate = async (messages: TranslateText[], system: string, from?: 'retries') => {
+  private execTranslate = async (
+    messages: TranslateText[],
+    system: string,
+    from?: 'retries',
+  ) => {
     const response = await this.client.chat.completions
       .create({
         model: 'gpt-3.5-turbo-1106',
@@ -94,13 +104,13 @@ class Translator {
 
     const context: Record<string, string> = {};
     if (from) {
-      console.group('retries');
+      logger.group('retries');
     }
     content.choices.forEach((choice, index) => {
-      console.log('current choice index:', index);
+      logger.log(`current choice index: ${index}`);
       if (choice.message.content) {
         const content = JSON.parse(choice.message.content) as Record<string, string>;
-        console.log('content', content);
+        logger.log(`content: ${choice.message.content}`);
         Object.assign(context, content);
       }
     });
@@ -108,10 +118,10 @@ class Translator {
     if (Object.keys(context).length < messages.length) {
       this.retries(messages, system, context);
       if (from) {
-        console.groupEnd();
+        logger.groupEnd();
       }
     }
-    console.log('token usage', content.usage);
+    logger.log(`token usage ${content.usage}`);
     return context;
   };
 

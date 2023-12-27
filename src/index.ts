@@ -125,7 +125,7 @@ const travesAll = async (config: string) => {
   try {
     await access(config);
   } catch (e) {
-    console.log('i18n assist config not exist, will be exist');
+    logger.log('i18n assist config not exist, will be exist');
     process.exit();
   }
   try {
