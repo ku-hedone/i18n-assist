@@ -83,4 +83,9 @@ export interface Config {
      */
     base_url?: string;
   };
+  /**
+   * 只 映射不翻译的语言
+   * @default 'zh-cn'
+   */
+  ignoreLanguage?: string
 }
