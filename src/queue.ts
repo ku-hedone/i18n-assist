@@ -25,10 +25,10 @@ class AsyncQueue {
 
     // 添加任务到队列
     enqueue(task: Task['task']) {
-        return new Promise((resolve, reject) => {
+        new Promise((resolve, reject) => {
             this.queue.push({ task, resolve, reject });
             this.dequeue();
-        });
+        })
     }
 
     // 从队列中取出任务执行

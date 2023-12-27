@@ -19,8 +19,8 @@ import Translator from './gpt';
 import AsyncQueue from './queue';
 import type { Config, LANGUAGE, ORIGINAL_TEXT, TRANSLATE_MAPPING } from './types';
 
-const genTranslateAction = (openai: Config['openai']) => {
-  const translator = new Translator(openai);
+const genTranslateAction = (opts: Config['openai']) => {
+  const translator = new Translator(opts);
   return async (
     names: LANGUAGE[],
     texts: string[],
@@ -60,7 +60,6 @@ interface ExecTranslateParams {
 
 const shardingTransTexts = ({ fragments, record, cache, texts, names, config, filter }:ExecTranslateParams) => {
       let changed = false;
-      // const fragments: string[][] = [[]];
       const { ignoreLanguage = DEFAULT_LANGUAGE, full = false } = config;
       try {
       for (const text of texts) {
@@ -265,9 +264,10 @@ const travesAll = async (config: string) => {
       let current = 0;
       const total = fragments.length;
       const queues = new AsyncQueue();
-      logger.log(`translate start......`);
-      fragments.forEach((texts) => {
+      logger.group(`translate start\n`);
+      fragments.forEach((texts, index) => {
         queues.enqueue(async () => {
+          logger.log(`translate ${index + 1} fragment...`);
           await translator(needTranslateLanguages, texts, record);
           current++;
           if (current === total) {
@@ -277,6 +277,9 @@ const travesAll = async (config: string) => {
           }
         });
       });
+      logger.groupEnd();
+      await queues.waitUntilAllTasksDone();
+      logger.log(`translate end\n`);
       try {
         await Promise.all(
           [...record.entries()].map(async ([name, json]) => {

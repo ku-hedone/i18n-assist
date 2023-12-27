@@ -14,6 +14,13 @@ class Translator {
     this.client = new OpenAI(this._opts);
   }
 
+  private genMessages = (text: string): TranslateText => {
+    return {
+        role: 'user',
+        content: text,
+      }
+  }
+
   private estimateTokenSize = (texts: string[]) => {
     let totalTokens = 0;
     const messages: TranslateText[][] = [[]];
@@ -34,10 +41,7 @@ class Translator {
       /**
        * @type {role: "user", content: string }
        */
-      const message: TranslateText = {
-        role: 'user',
-        content: text,
-      };
+      const message = this.genMessages(text);
 
       if (tokenSize + totalTokens < this.MAX_INPUT_CONTENT_SIZE) {
         totalTokens += tokenSize;
@@ -55,7 +59,21 @@ class Translator {
     return messages;
   };
 
-  private execTranslate = async (messages: TranslateText[], system: string) => {
+  private retries = async (messages: TranslateText[], system: string, context: Record<string, string>) => {
+      const book = new Set<string>();
+      messages.forEach((i) => book.add(i.content));
+      const currentKeys = Object.keys(context);
+      currentKeys.forEach((text) => {
+        if (book.has(text)) {
+          book.delete(text);
+        }
+      });
+      const looseMessages = [...book.keys()].map((text) => this.genMessages(text));
+      const looseContext = await this.execTranslate(looseMessages, system, 'retries');
+      Object.assign(context, looseContext);
+  }
+
+  private execTranslate = async (messages: TranslateText[], system: string, from?: 'retries') => {
     const response = await this.client.chat.completions
       .create({
         model: 'gpt-3.5-turbo-1106',
@@ -75,7 +93,9 @@ class Translator {
     const content = (await response.json()) as ChatCompletion;
 
     const context: Record<string, string> = {};
-
+    if (from) {
+      console.group('retries');
+    }
     content.choices.forEach((choice, index) => {
       console.log('current choice index:', index);
       if (choice.message.content) {
@@ -84,6 +104,13 @@ class Translator {
         Object.assign(context, content);
       }
     });
+    // 增加处理 loose text 的逻辑
+    if (Object.keys(context).length < messages.length) {
+      this.retries(messages, system, context);
+      if (from) {
+        console.groupEnd();
+      }
+    }
     console.log('token usage', content.usage);
     return context;
   };
