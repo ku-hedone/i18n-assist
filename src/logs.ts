@@ -45,6 +45,14 @@ class Logger {
   }
 }
 
-const logger = new Logger(process.stdout, process.stderr);
+const fakerStdout = {
+  write: (...args: any[]) => false
+} as WriteStream
+
+const fakerStderr: WriteStream = {
+  write: (...args: any[]) => false
+} as WriteStream
+
+const logger = process.env.NODE_ENV === "dev" ? new Logger(process.stdout, process.stderr) : new Logger(fakerStdout, fakerStderr);
 
 export default logger;
