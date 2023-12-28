@@ -10,6 +10,7 @@ class Translator {
   private client: OpenAI;
   private MAX_INPUT_SIZE = 10_000;
   private MAX_INPUT_CONTENT_SIZE = this.MAX_INPUT_SIZE - 96;
+  private requestCount = 0;
   constructor(opts: ClientOptions) {
     this._opts = opts;
     this.client = new OpenAI(this._opts);
@@ -48,35 +49,27 @@ class Translator {
         totalTokens += tokenSize;
         messages[messages.length - 1].push(message);
       } else {
-        logger.log(
-          `token size of index ${messages.length - 1} from messages: ${totalTokens}`,
-        );
         messages.push([message]);
         totalTokens = tokenSize;
       }
     }
-    logger.log(
-      `token size of index ${messages.length - 1} from messages: ${totalTokens}`,
-    );
+    logger.log(`token stack size: ${messages.length};`);
     return messages;
   };
 
   private retries = async (
-    messages: TranslateText[],
+    diff: string[],
     system: string,
-    context: Record<string, string>,
   ) => {
-    const book = new Set<string>();
-    messages.forEach((i) => book.add(i.content));
-    const currentKeys = Object.keys(context);
-    currentKeys.forEach((text) => {
-      if (book.has(text)) {
-        book.delete(text);
-      }
-    });
-    const looseMessages = [...book.keys()].map((text) => this.genMessages(text));
+    logger.group('retries');
+    // logger.log(`messages: ${messages.map((i) => i.content).join(' | ')}, size: ${messages.length}`);
+    // logger.log(`currentKeys: ${currentKeys.join(' | ')}, size: ${currentKeys.length}`);
+    const looseMessages = diff.map((text) => this.genMessages(text));
+    logger.log(`loose keys: ${diff.join(' | ')}, size: ${looseMessages.length}`);
     const looseContext = await this.execTranslate(looseMessages, system, 'retries');
-    Object.assign(context, looseContext);
+    logger.log(`tries get loose keys: ${Object.keys(looseContext).join(" | ")}`);
+    logger.groupEnd();
+    return looseContext;
   };
 
   private execTranslate = async (
@@ -84,55 +77,77 @@ class Translator {
     system: string,
     from?: 'retries',
   ) => {
-    const response = await this.client.chat.completions
-      .create({
-        model: 'gpt-3.5-turbo-1106',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: 'start' }, // 用户发出开始记忆翻译内容的指令
-          ...messages,
-          { role: 'user', content: 'end' }, // 用户发出结束记忆的指令
-        ],
-        temperature: 0,
-        response_format: {
-          type: 'json_object',
-        },
-        max_tokens: this.MAX_INPUT_SIZE,
-      })
-      .asResponse();
-    const content = (await response.json()) as ChatCompletion;
-
-    const context: Record<string, string> = {};
-    if (from) {
-      logger.group('retries');
-    }
-    content.choices.forEach((choice, index) => {
-      logger.log(`current choice index: ${index}`);
-      if (choice.message.content) {
-        const content = JSON.parse(choice.message.content) as Record<string, string>;
-        logger.log(`content: ${choice.message.content}`);
-        Object.assign(context, content);
+    if (this.requestCount <= 59) {
+      const start = performance.now();
+      const response = await this.client.chat.completions
+        .create({
+          model: 'gpt-3.5-turbo-1106',
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: 'start' }, // 用户发出开始记忆翻译内容的指令
+            ...messages,
+            { role: 'user', content: 'end' }, // 用户发出结束记忆的指令
+          ],
+          temperature: 0,
+          response_format: {
+            type: 'json_object',
+          },
+          max_tokens: this.MAX_INPUT_SIZE,
+        })
+        .asResponse();
+      const end = performance.now();
+      this.requestCount++;
+      logger.group(`No.${this.requestCount} request cost time ${end - start}ms`);
+      const content = (await response.json()) as ChatCompletion;
+      const book = new Set<string>(messages.map((i) => i.content));
+      const context: Record<string, string> = {};
+      const res: Record<string, string>[] = [];
+      content.choices.forEach((choice, index) => {
+        if (choice.message.content) {
+          console.log('choice.message.content', choice.message.content);
+          const content = JSON.parse(choice.message.content) as Record<string, string>;
+          const keys = Object.keys(content);
+          // case: gpt 存在合并 输入内容的情况 ， 需要严格对比 返回的 key， 如果返回的 key 不存在 与 texts 需要删除
+          // 非 | 删 | 开启
+          // ->
+          // 非删 | 开启
+          logger.log(`No.${index} content size: ${keys.length}`);
+          // todo: upgrade prompt or gpt api version ?
+          keys.forEach((key) => {
+            if (!book.has(key)) {
+              delete content[key];
+            } else {
+              book.delete(key);
+            }
+          });
+          res.push(content);
+        }
+      });
+      // 增加处理 loose text 的逻辑
+      if (book.size > 0) {
+        const loose = await this.retries([...book], system);
+        res.push(loose);
       }
-    });
-    // 增加处理 loose text 的逻辑
-    if (Object.keys(context).length < messages.length) {
-      this.retries(messages, system, context);
-      if (from) {
-        logger.groupEnd();
-      }
+      Object.assign(context, ...res);
+      logger.log(`token usage ${JSON.stringify(content.usage)}`);
+      logger.groupEnd();
+      return context;
     }
-    logger.log(`token usage ${content.usage}`);
-    return context;
+    logger.log('executed too mach times')
+    return {};
   };
 
   public translation = async (TARGET_LANGUAGE: string, texts: string[]) => {
     const prompt = `You are a helpful translator. Start memorizing the text for translation when you receive a 'start' command from the user and stop when you receive an 'end' command. Translate all memorized text from Chinese to ${TARGET_LANGUAGE} and return the translations in a JSON format like { 'original text': 'translated text' }.`;
     const messages = this.estimateTokenSize(texts);
     const contexts: Record<string, string> = {};
+    const res: Record<string, string>[] = [];
     for await (const msgs of messages) {
       const context = await this.execTranslate(msgs, prompt);
-      Object.assign(contexts, context);
+      res.push(context);
     }
+    Object.assign(contexts, ...res);
+    logger.log(`current translate size ${res.length}`);
     return contexts;
   };
 }
