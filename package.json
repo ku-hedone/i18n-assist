@@ -1,6 +1,6 @@
 {
   "name": "@hedone/i18n-assist",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "./build/src/index.js",
   "module": "./build/src/index.js",
