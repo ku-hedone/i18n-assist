@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
 import { access, readFile, readdir, stat, writeFile, mkdir } from 'fs/promises';
-import { join, extname } from 'path';
+import { join, dirname, extname } from 'path';
 import Collector from './collect';
 import parser from './core';
 import { collectFilesOnly, getTimeStamp } from './helper';
@@ -136,9 +136,10 @@ const travesAll = async (config: string) => {
   try {
     const res = await readFile(config, DEFAULT_ENCODING);
     const configJson = JSON.parse(res) as Config;
+    const root = join(dirname(config), configJson.root);
 
     logger.group('i18n assist current config info');
-    logger.log(`current config's root: ${configJson.root}`);
+    logger.log(`current config's root: ${root}`);
     const collector = new Collector();
     const filters = new Set<string>();
     if (
@@ -146,15 +147,15 @@ const travesAll = async (config: string) => {
       Array.isArray(configJson.filter) &&
       configJson.filter.length > 0
     ) {
-      configJson.filter.forEach((path) => filters.add(join(configJson.root, ...path)));
+      configJson.filter.forEach((path) => filters.add(join(root, ...path)));
       logger.log(`current config's filter: ${[...filters].toString()}`);
     }
-    await recursive(configJson.root, filters, collector);
+    await recursive(root, filters, collector);
     logger.log(`Number of all texts to be translated: ${collector.values().length}`);
     /**
      * destination directory
      */
-    const destDir = join(configJson.root, ...(configJson.target || DEFAULT_LOCALES_DIR));
+    const destDir = join(root, ...(configJson.target || DEFAULT_LOCALES_DIR));
     const translateStat = existsSync(destDir);
     // 判断 translateStat 是否存在 && 是否是文件夹
     if (!translateStat) {
@@ -172,7 +173,7 @@ const travesAll = async (config: string) => {
     /**
      * backup directory
      */
-    const bakDir = join(configJson.root, ...(configJson.backup || DEFAULT_BACKUP_DIR));
+    const bakDir = join(root, ...(configJson.backup || DEFAULT_BACKUP_DIR));
     const bakStat = existsSync(bakDir);
     // 判断 translateStat 是否存在 && 是否是文件夹
     if (!bakStat) {
