@@ -64,7 +64,7 @@ const shardingTransTexts = ({
   config,
   filter,
 }: ExecTranslateParams) => {
-  let changed = false;
+  let count = 0;
   const { ignoreLanguage = DEFAULT_LANGUAGE, full = false } = config;
   try {
     for (const text of texts) {
@@ -85,16 +85,18 @@ const shardingTransTexts = ({
           }
         }
       });
-
       if (!filter.has(text)) {
-        changed = true;
+        if (fragments.length === 0) {
+          fragments.push([]);
+        }
+        count++;
         fragments[fragments.length - 1].push(text);
         if (fragments[fragments.length - 1].length === BATCH_SIZE) {
           fragments.push([]);
         }
       }
     }
-    return changed;
+    return count;
   } catch (error) {
     logger.error(`exception from sharding: ${error}`);
     process.exit();
@@ -257,8 +259,8 @@ const travesAll = async (config: string) => {
     /**
      * preparing for translate
      */
-    const fragments: string[][] = [[]];
-    const changed = shardingTransTexts({
+    const fragments: string[][] = [];
+    const counted = shardingTransTexts({
       fragments,
       record,
       cache,
@@ -267,62 +269,64 @@ const travesAll = async (config: string) => {
       names,
       filter,
     });
-
-    try {
-      const translator = genTranslateAction(configJson.openai);
-      const needTranslateLanguages = names.filter(
-        (i) => i !== (configJson.ignoreLanguage || DEFAULT_LANGUAGE),
-      );
-      logger.log(`needTranslateLanguages ${needTranslateLanguages.join(',')}\n`);
-      let current = 0;
-      const total = fragments.length * needTranslateLanguages.length;
-      const queues = new AsyncQueue();
-      logger.group(`translate start\n`);
-      fragments.forEach((texts, index) => {
-        needTranslateLanguages.forEach((name, j) => {
-          queues.enqueue(async () => {
-            if (j === 0) {
-              logger.log(`current fragments translate texts is: ${texts.join(',')}`);
-            }
-            logger.log(
-              `translate ${configJson.ignoreLanguage || DEFAULT_LANGUAGE} into ${name}`,
-            );
-            logger.log(`translate ${j + 1} part of ${index + 1} fragment`);
-            await translator(name, texts, record);
-            current++;
-            if (current === total) {
-              logger.log(`translate completed`);
-            } else {
-              logger.log(`translate percent: ${((current * 100) / total).toFixed(2)}%`);
-            }
+    if (counted > 0) {
+      try {
+        const translator = genTranslateAction(configJson.openai);
+        const needTranslateLanguages = names.filter(
+          (i) => i !== (configJson.ignoreLanguage || DEFAULT_LANGUAGE),
+        );
+        logger.log(`needTranslateLanguages ${needTranslateLanguages.join(',')}\n`);
+        let current = 0;
+        const total = fragments.length * needTranslateLanguages.length;
+        const queues = new AsyncQueue();
+        logger.group(`translate start\n`);
+        fragments.forEach((texts, index) => {
+          needTranslateLanguages.forEach((name, j) => {
+            queues.enqueue(async () => {
+              if (j === 0) {
+                logger.log(`current fragments translate texts is: ${texts.join(',')}`);
+              }
+              logger.log(
+                `translate ${configJson.ignoreLanguage || DEFAULT_LANGUAGE} into ${name}`,
+              );
+              logger.log(`translate ${j + 1} part of ${index + 1} fragment`);
+              await translator(name, texts, record);
+              current++;
+              if (current === total) {
+                logger.log(`translate completed`);
+              } else {
+                logger.log(`translate percent: ${((current * 100) / total).toFixed(2)}%`);
+              }
+            });
           });
         });
-      });
-      await queues.waitUntilAllTasksDone();
-      logger.log(`translate end\n`);
-      logger.groupEnd();
-      try {
-        logger.log(`write mapping exec\n`);
-        await Promise.all(
-          [...record.entries()].map(async ([name, json]) => {
-            const file = `${name}.json`;
-            // 当存在变动时 && 文件存在时 才需要备份
-            const target_file_path = join(destDir, file);
-            if (changed && existsSync(target_file_path)) {
-              const data = await readFile(target_file_path, DEFAULT_ENCODING);
-              await writeFile(join(bakDir, `${name}.${date}.json`), data);
-            }
-            await writeFile(target_file_path, JSON.stringify(json, null, 2));
-          }),
-        );
+        await queues.waitUntilAllTasksDone();
+        logger.log(`translate end\n`);
+        logger.groupEnd();
+        try {
+          logger.log(`write mapping exec\n`);
+          await Promise.all(
+            [...record.entries()].map(async ([name, json]) => {
+              const file = `${name}.json`;
+              // 当存在变动时 && 文件存在时 才需要备份
+              const target_file_path = join(destDir, file);
+              if (counted > 0 && existsSync(target_file_path)) {
+                const data = await readFile(target_file_path, DEFAULT_ENCODING);
+                await writeFile(join(bakDir, `${name}.${date}.json`), data);
+              }
+              await writeFile(target_file_path, JSON.stringify(json, null, 2));
+            }),
+          );
+        } catch (error) {
+          logger.error(`exception from write mapping json: ${error}`);
+          process.exit();
+        }
       } catch (error) {
-        logger.error(`exception from write mapping json: ${error}`);
+        logger.error(`exception from translate texts: ${error}`);
         process.exit();
       }
-    } catch (error) {
-      logger.error(`exception from translate texts: ${error}`);
-      process.exit();
     }
+    logger.log('will be exited')
   } catch (e) {
     logger.error(`gen files error: ${e}`);
     process.exit();
