@@ -138,8 +138,7 @@ class Translator {
   };
 
   public translation = async (TARGET_LANGUAGE: string, texts: string[]) => {
-    const prompt = `You are a helpful translator. Start memorizing the text for translation when you receive a 'start' command from the user and stop when you receive an 'end' command. Translate all memorized text from Chinese to ${TARGET_LANGUAGE} and return the translations in a JSON format like { 'original text': 'translated text' }.`;
-    const messages = this.estimateTokenSize(texts);
+    const prompt = `You are a helpful translator. When you receive a 'start' command from the user, begin memorizing the text for translation. Stop memorizing when you receive an 'end' command. After receiving the 'end' command, translate all memorized text from Chinese to ${TARGET_LANGUAGE}. Format the translations as a JSON object, where each key is the original Chinese text and its value is the translated text in ${TARGET_LANGUAGE}. Ensure that the JSON object strictly follows the format: { 'original text': 'translated text' }. Do not include any additional keys or metadata in the JSON object.`;    const messages = this.estimateTokenSize(texts);
     const contexts: Record<string, string> = {};
     const res: Record<string, string>[] = [];
     for await (const msgs of messages) {
