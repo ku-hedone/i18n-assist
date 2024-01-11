@@ -19,8 +19,8 @@ import Translator from './gpt';
 import AsyncQueue from './queue';
 import type { Config, LANGUAGE, ORIGINAL_TEXT, TRANSLATE_MAPPING } from './types';
 
-const genTranslateAction = (opts: Config['openai']) => {
-  const translator = new Translator(opts);
+const genTranslateAction = (config: Config) => {
+  const translator = new Translator(config.openai, config.chatCompletionCreate);
   return async (
     name: LANGUAGE,
     texts: string[],
@@ -271,7 +271,7 @@ const travesAll = async (config: string) => {
     });
     if (counted > 0) {
       try {
-        const translator = genTranslateAction(configJson.openai);
+        const translator = genTranslateAction(configJson);
         const needTranslateLanguages = names.filter(
           (i) => i !== (configJson.ignoreLanguage || DEFAULT_LANGUAGE),
         );

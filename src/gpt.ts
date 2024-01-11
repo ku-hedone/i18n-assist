@@ -1,18 +1,32 @@
 import OpenAI from 'openai';
 import logger from './logs';
 import type { ClientOptions } from 'openai';
-import type { ChatCompletion } from 'openai/resources/chat/completions';
+import type {
+  ChatCompletion,
+  ChatCompletionCreateParamsNonStreaming,
+} from 'openai/resources/chat/completions';
 
 type TranslateText = { role: 'user'; content: string };
 
 class Translator {
   private _opts: ClientOptions;
+  private _reqOpts?: Omit<
+    ChatCompletionCreateParamsNonStreaming,
+    'max_tokens' | 'messages' | 'temperature'
+  >;
   private client: OpenAI;
   private MAX_INPUT_SIZE = 10_000;
   private MAX_INPUT_CONTENT_SIZE = this.MAX_INPUT_SIZE - 96;
   private requestCount = 0;
-  constructor(opts: ClientOptions) {
+  constructor(
+    opts: ClientOptions,
+    reqOpts?: Omit<
+      ChatCompletionCreateParamsNonStreaming,
+      'max_tokens' | 'messages' | 'temperature'
+    >,
+  ) {
     this._opts = opts;
+    this._reqOpts = reqOpts;
     this.client = new OpenAI(this._opts);
   }
 
@@ -57,17 +71,14 @@ class Translator {
     return messages;
   };
 
-  private retries = async (
-    diff: string[],
-    system: string,
-  ) => {
+  private retries = async (diff: string[], system: string) => {
     logger.group('retries');
     // logger.log(`messages: ${messages.map((i) => i.content).join(' | ')}, size: ${messages.length}`);
     // logger.log(`currentKeys: ${currentKeys.join(' | ')}, size: ${currentKeys.length}`);
     const looseMessages = diff.map((text) => this.genMessages(text));
     logger.log(`loose keys: ${diff.join(' | ')}, size: ${looseMessages.length}`);
     const looseContext = await this.execTranslate(looseMessages, system, 'retries');
-    logger.log(`tries get loose keys: ${Object.keys(looseContext).join(" | ")}`);
+    logger.log(`tries get loose keys: ${Object.keys(looseContext).join(' | ')}`);
     logger.groupEnd();
     return looseContext;
   };
@@ -93,6 +104,7 @@ class Translator {
             type: 'json_object',
           },
           max_tokens: this.MAX_INPUT_SIZE,
+          ...this._reqOpts,
         })
         .asResponse();
       const end = performance.now();
@@ -133,12 +145,13 @@ class Translator {
       logger.groupEnd();
       return context;
     }
-    logger.log('executed too mach times')
+    logger.log('executed too mach times');
     return {};
   };
 
   public translation = async (TARGET_LANGUAGE: string, texts: string[]) => {
-    const prompt = `You are a helpful translator. When you receive a 'start' command from the user, begin memorizing the text for translation. Stop memorizing when you receive an 'end' command. After receiving the 'end' command, translate all memorized text from Chinese to ${TARGET_LANGUAGE}. Format the translations as a JSON object, where each key is the original Chinese text and its value is the translated text in ${TARGET_LANGUAGE}. Ensure that the JSON object strictly follows the format: { 'original text': 'translated text' }. Do not include any additional keys or metadata in the JSON object.`;    const messages = this.estimateTokenSize(texts);
+    const prompt = `You are a helpful translator. When you receive a 'start' command from the user, begin memorizing the text for translation. Stop memorizing when you receive an 'end' command. After receiving the 'end' command, translate all memorized text from Chinese to ${TARGET_LANGUAGE}. Format the translations as a JSON object, where each key is the original Chinese text and its value is the translated text in ${TARGET_LANGUAGE}. Ensure that the JSON object strictly follows the format: { 'original text': 'translated text' }. Do not include any additional keys or metadata in the JSON object.`;
+    const messages = this.estimateTokenSize(texts);
     const contexts: Record<string, string> = {};
     const res: Record<string, string>[] = [];
     for await (const msgs of messages) {

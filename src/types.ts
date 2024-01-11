@@ -1,3 +1,7 @@
+import type {
+  ChatCompletionCreateParamsNonStreaming,
+} from 'openai/resources/chat/completions';
+
 export type LANGUAGE = 'en-us' | 'zh-cn' | 'id-id' | (string & {});
 
 export type ORIGINAL_TEXT = string;
@@ -6,13 +10,13 @@ type TARGET_TEXT = string;
 export type TRANSLATE_MAPPING = Record<ORIGINAL_TEXT, TARGET_TEXT>;
 
 export interface Config {
-/**
+  /**
    * @description
    * 指定项目的根目录，用于开始扫描和处理文件。
    * 指定扫描获取翻译内容的开始目录，用于开始扫描和处理文件。(相对于 config.json 文件而言)
    * @example
    * config 位于"path/config.json", 目标开始的 目录为 "path/src" 则 root: "path/src"
-   * 
+   *
    * 格式
    * '/path/to/project'
    */
@@ -87,9 +91,13 @@ export interface Config {
      */
     base_url?: string;
   };
+  chatCompletionCreate: Omit<
+    ChatCompletionCreateParamsNonStreaming,
+    'max_tokens' | 'messages' | 'temperature'
+  >;
   /**
    * 只 映射不翻译的语言
    * @default 'zh-cn'
    */
-  ignoreLanguage?: string
+  ignoreLanguage?: string;
 }
