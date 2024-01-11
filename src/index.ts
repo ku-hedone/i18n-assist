@@ -150,7 +150,7 @@ const travesAll = async (config: string) => {
       configJson.filter.length > 0
     ) {
       configJson.filter.forEach((path) => filters.add(join(root, ...path)));
-      logger.log(`current config's filter: ${[...filters].toString()}`);
+      logger.log(`current config's filter:\n ${[...filters].join('\n\r')}`);
     }
     await recursive(root, filters, collector);
     logger.log(`Number of all texts to be translated: ${collector.values().length}`);
@@ -260,7 +260,7 @@ const travesAll = async (config: string) => {
      * preparing for translate
      */
     const fragments: string[][] = [];
-    const counted = shardingTransTexts({
+    const count = shardingTransTexts({
       fragments,
       record,
       cache,
@@ -269,7 +269,7 @@ const travesAll = async (config: string) => {
       names,
       filter,
     });
-    if (counted > 0) {
+    if (count > 0) {
       try {
         const translator = genTranslateAction(configJson);
         const needTranslateLanguages = names.filter(
@@ -310,7 +310,7 @@ const travesAll = async (config: string) => {
               const file = `${name}.json`;
               // 当存在变动时 && 文件存在时 才需要备份
               const target_file_path = join(destDir, file);
-              if (counted > 0 && existsSync(target_file_path)) {
+              if (count > 0 && existsSync(target_file_path)) {
                 const data = await readFile(target_file_path, DEFAULT_ENCODING);
                 await writeFile(join(bakDir, `${name}.${date}.json`), data);
               }
@@ -326,7 +326,7 @@ const travesAll = async (config: string) => {
         process.exit();
       }
     }
-    logger.log('will be exited')
+    logger.log('will be exited');
   } catch (e) {
     logger.error(`gen files error: ${e}`);
     process.exit();
