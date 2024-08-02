@@ -20,7 +20,7 @@ import AsyncQueue from './queue';
 import type { Config, LANGUAGE, ORIGINAL_TEXT, TRANSLATE_MAPPING } from './types';
 
 const genTranslateAction = (config: Config) => {
-  const translator = new Translator(config.openai, config.chatCompletionCreate);
+  const translator = new Translator(config.openai);
   return async (
     name: LANGUAGE,
     texts: string[],

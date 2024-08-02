@@ -15,18 +15,23 @@ class Translator {
     'max_tokens' | 'messages' | 'temperature'
   >;
   private client: OpenAI;
-  private MAX_INPUT_SIZE = 10_000;
-  private MAX_INPUT_CONTENT_SIZE = this.MAX_INPUT_SIZE - 96;
+  private MAX_INPUT_SIZE: number;
+  private MAX_INPUT_CONTENT_SIZE: number;
   private requestCount = 0;
   constructor(
-    opts: ClientOptions,
-    reqOpts?: Omit<
-      ChatCompletionCreateParamsNonStreaming,
-      'max_tokens' | 'messages' | 'temperature'
-    >,
+    opts: ClientOptions & {
+      chatCompletion?: Omit<
+        ChatCompletionCreateParamsNonStreaming,
+        'max_tokens' | 'messages' | 'temperature'
+      >;
+      contextSize?: number;
+    },
   ) {
-    this._opts = opts;
-    this._reqOpts = reqOpts;
+    const { chatCompletion, contextSize = 10_000, ..._opts } = opts;
+    this._opts = _opts;
+    this._reqOpts = chatCompletion;
+    this.MAX_INPUT_SIZE = contextSize;
+    this.MAX_INPUT_CONTENT_SIZE = contextSize - 165;
     this.client = new OpenAI(this._opts);
   }
 
@@ -92,7 +97,8 @@ class Translator {
       const start = performance.now();
       const response = await this.client.chat.completions
         .create({
-          model: 'gpt-3.5-turbo-1106',
+          // model: 'gpt-3.5-turbo-1106',
+          model: 'gpt-3.5-turbo',
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: 'start' }, // 用户发出开始记忆翻译内容的指令
@@ -150,7 +156,7 @@ class Translator {
   };
 
   public translation = async (TARGET_LANGUAGE: string, texts: string[]) => {
-    const prompt = `You are a helpful translator. When you receive a 'start' command from the user, begin memorizing the text for translation. Stop memorizing when you receive an 'end' command. After receiving the 'end' command, translate all memorized text from Chinese to ${TARGET_LANGUAGE}. Format the translations as a JSON object, where each key is the original Chinese text and its value is the translated text in ${TARGET_LANGUAGE}. Ensure that the JSON object strictly follows the format: { 'original text': 'translated text' }. Do not include any additional keys or metadata in the JSON object.`;
+    const prompt = `Forget all content before the current conversation. You are a helpful translator. When you receive a 'start' command from the user, begin memorizing the text for translation. Stop memorizing when you receive an 'end' command. After receiving the 'end' command, translate all memorized text from Chinese to ${TARGET_LANGUAGE}, ensuring that the translations align with common terminology used in software, computer programming, databases, and management systems. This includes using concise and widely-recognized terms for technical concepts and entities. Format the translations as a JSON object, where each key is the original Chinese text and its value is the translated text in ${TARGET_LANGUAGE}. Ensure that the JSON object strictly follows the format: { 'original text': 'translated text' }. Only return the JSON object, without any additional formatting or metadata.`;
     const messages = this.estimateTokenSize(texts);
     const contexts: Record<string, string> = {};
     const res: Record<string, string>[] = [];

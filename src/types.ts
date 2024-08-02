@@ -1,6 +1,4 @@
-import type {
-  ChatCompletionCreateParamsNonStreaming,
-} from 'openai/resources/chat/completions';
+import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
 
 export type LANGUAGE = 'en-us' | 'zh-cn' | 'id-id' | (string & {});
 
@@ -90,11 +88,12 @@ export interface Config {
      * from openai nodejs lib
      */
     base_url?: string;
+    chatCompletion?: Omit<
+      ChatCompletionCreateParamsNonStreaming,
+      'max_tokens' | 'messages' | 'temperature'
+    >;
+    contextSize?: number;
   };
-  chatCompletionCreate: Omit<
-    ChatCompletionCreateParamsNonStreaming,
-    'max_tokens' | 'messages' | 'temperature'
-  >;
   /**
    * 只 映射不翻译的语言
    * @default 'zh-cn'
