@@ -10,6 +10,7 @@ import type {
     JsxElement,
     JsxText,
     JsxSelfClosingElement,
+    ObjectLiteralExpression,
 } from 'typescript';
 
 const {
@@ -33,6 +34,26 @@ const handleCallExpression = (node: CallExpression, Collector: Collector) => {
                     Collector.record(text);
                 }
             }
+        } else if (text === 'formatMessage') {
+          const { arguments: args } = node;
+          if (args.length > 0) {
+            const arg = args[0];
+            if (arg.kind === SyntaxKind.ObjectLiteralExpression) {
+              const { properties } = arg as ObjectLiteralExpression;
+              properties.forEach((property) => {
+                if (property.kind === SyntaxKind.PropertyAssignment) {
+                  const key = property.name.getFullText().trim();
+                  if (key === 'id') {
+                    const { initializer } = property;
+                    if (initializer.kind === SyntaxKind.StringLiteral) {
+                      const { text } = initializer as StringLiteral;
+                      Collector.record(text);
+                    }
+                  }
+                }
+              });
+            }
+          }
         }
     }
 }
@@ -59,22 +80,43 @@ const handleJsxElement = (node: JsxElement, Collector: Collector) => {
 const handleJsxSelfClosingElement = (node: JsxSelfClosingElement, Collector: Collector) => {
     const { tagName } = node;
     if (tagName.kind === SyntaxKind.Identifier && tagName.text === 'Trans') {
-        const { attributes } = node;
-        const n = attributes.properties.length;
-        for (let i = 0; i < n; i++) {
-            const attribute = attributes.properties[i];
-            if (
+        if (tagName.text === "Trans") {
+            const { attributes } = node;
+            const n = attributes.properties.length;
+            for (let i = 0; i < n; i++) {
+              const attribute = attributes.properties[i];
+              if (
                 attribute.kind === SyntaxKind.JsxAttribute &&
                 attribute.name.kind === SyntaxKind.Identifier &&
                 attribute.name.text === 'defaults'
-            ) {
+              ) {
                 if (
-                    attribute.initializer &&
-                    attribute.initializer.kind === SyntaxKind.StringLiteral
+                  attribute.initializer &&
+                  attribute.initializer.kind === SyntaxKind.StringLiteral
                 ) {
-                    const { text } = attribute.initializer;
-                    Collector.record(text);
+                  const { text } = attribute.initializer;
+                  Collector.record(text);
                 }
+              }
+            }
+        } else if (tagName.text === "FormattedMessage") {
+            const { attributes } = node;
+            const n = attributes.properties.length;
+            for (let i = 0; i < n; i++) {
+              const attribute = attributes.properties[i];
+              if (
+                attribute.kind === SyntaxKind.JsxAttribute &&
+                attribute.name.kind === SyntaxKind.Identifier &&
+                attribute.name.text === 'id'
+              ) {
+                if (
+                  attribute.initializer &&
+                  attribute.initializer.kind === SyntaxKind.StringLiteral
+                ) {
+                  const { text } = attribute.initializer;
+                  Collector.record(text);
+                }
+              }
             }
         }
     }
@@ -117,6 +159,5 @@ const parser = async (pwd: string, Collector: Collector) => {
     );
     visitor(Collector)(sourceFile);
 };
-
 
 export default parser;
